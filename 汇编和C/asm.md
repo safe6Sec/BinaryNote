@@ -368,7 +368,7 @@ POP m16/m32
 
 ## CALL指令
 
-表示调用函数，其格式为：
+表示调用函数可理解为push+jmp，其格式为：
 
 ```asm
 // CALL 寄存器/内存/立即数
@@ -397,9 +397,30 @@ RET
 ## 堆栈相关指令
 
 - 堆栈相当于一个瓶子，往里面存东西。里面东西多了之后，找别的都需要用到最顶上的一个也就是esp寻址。
+
 - 堆栈的地址使用是从**大用到小的（高位地址到低位地址）**。
+
 - 堆栈讲究**先入后出**的概念
+
 - 堆栈地址范围就可以是**ESP - EBP**
+
+- 函数的参数从右往左的方式依次入栈，最后入栈的是函数的返回地址
+
+  比如我有个函数fun1(int a, char b, int c )
+
+  我在main函数中调用了fun1函数，
+
+  那么参数入栈的时候
+
+  最先入栈的是变量c
+
+  其次入栈的是变量b
+
+  接着入栈的是变量a
+
+  最后入栈的是main函数调用这个fun1函数之后的地址。
+
+  
 
 ### ESP寻址
 
@@ -408,6 +429,10 @@ RET
 ```asm
 mov eax, dword ptr ss:[esp+4]
 ```
+
+`esp-4`就是有值推到堆栈里面，也就是往上抬。`esp+4`与之相反就是往下找具体地址。
+
+一个int占四个字节,所以就是esp的值减少了四。
 
 
 
@@ -433,3 +458,4 @@ mov eax, dword ptr ss:[esp+4]
 
 - https://www.cnblogs.com/zimmerk/articles/2520011.html
 - https://gh0st.cn/Binary-Learning/%E6%B1%87%E7%BC%96%E8%AF%AD%E8%A8%80.html
+- https://www.anquanke.com/post/id/207594
