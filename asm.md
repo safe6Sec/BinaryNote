@@ -1,7 +1,7 @@
 ## 简单说明
 
 - 环境推荐用52破解虚拟机https://www.52pojie.cn/thread-661779-1-1.html
-- 教程我是直接学key师傅的笔记，具体看个人基础来选择。https://gh0st.cn/Binary-Learning/Binary-Learning.html
+- 教程我是直接学文末的各种笔记文章，具体看个人基础来选择学习方法。
 - 吾爱有官方教学视频可在爱盘找到，还有一些例子可用
 - 写c的话ide推荐用vc6别用vs，vs会对代码进行优化。
 - 这里学的汇编语言是32位的，虽然现在大部分计算机都是64位的，但从本质上来说64位也是从32位衍生的，只有你学好了32位才能更容易的去学64位。
@@ -190,7 +190,7 @@ ADD r32, r/m32
 
 表示**数据相减**，其格式为：
 
-```
+```asm
 // SUB 目标操作数，源操作数
 // 含义：将源操作数与目标操作数相减，最后结果给到目标操作数
 SUB r/m8, imm8
@@ -386,6 +386,62 @@ RET
 
 
 
+# 常用的32汇编指令
+
+和上面的有重复，不管了。懒得整理。
+
+- ADD ：加法
+- ADC ：带位加法
+- SBB ：带位减法
+- SUB：减法.
+- INC ：加法.
+- CMP ：比较.(两操作数作减法,仅修改标志位,不回送结果).
+- AND ：与运算.
+- OR ：或运算.
+- XOR ：异或运算.
+- NOT ：取反.
+- MOV：传送字或字节.
+- MOVSX：先符号扩展,再传送.
+- PUSH：把字压入堆栈.
+- POP：把字弹出堆栈.
+- PUSHA：把AX,CX,DX,BX,SP,BP,SI,DI依次压入堆栈.
+- POPA ： 把DI,SI,BP,SP,BX,DX,CX,AX依次弹出堆栈.
+- PUSHAD ： 把EAX,ECX,EDX,EBX,ESP,EBP,ESI,EDI依次压入堆栈.
+- POPAD ： 把EDI,ESI,EBP,ESP,EBX,EDX,ECX,EAX依次弹出堆栈.
+- LEA : 装入有效地址. 例: LEA DX,0xAA //把0xAA地址存到DX.
+- JMP ：无条件转移指令
+- CALL：过程调用 .
+- RET/RETF : 过程返回.
+
+## JCC指令
+
+| JCC指令     | 含义                                               | 英文                                                    | 检查符号位       | C语句                    |
+| ----------- | -------------------------------------------------- | ------------------------------------------------------- | ---------------- | ------------------------ |
+| JZ/JE       | 若为0则跳转；若相等则跳转                          | jump if zero;jump if equal                              | ZF=1             | if (i == j);if (i == 0); |
+| JNZ/JNE     | 若不为0则跳转；若不相等则跳转                      | jump if not zero;jump if not equal                      | ZF=0             | if (i != j);if (i != 0); |
+| JS          | 若为负则跳转                                       | jump if sign                                            | SF=1             | if (i < 0);              |
+| JNS         | 若为正则跳转                                       | jump if not sign                                        | SF=0             | if (i > 0);              |
+| JP/JPE      | 若1出现次数为偶数则跳转                            | jump if Parity (Even)                                   | PF=1             | /                        |
+| JNP/JPO     | 若1出现次数为奇数则跳转                            | jump if not parity (odd)                                | PF=0             | /                        |
+| JO          | 若溢出则跳转                                       | jump if overflow                                        | OF=1             | /                        |
+| JNO         | 若无溢出则跳转                                     | jump if not overflow                                    | OF=0             | /                        |
+| JC/JB/JNAE  | 若进位则跳转；若低于则跳转；若不高于等于则跳转     | jump if carry;jump if below;jump if not above equal     | CF=1             | if (i < j);              |
+| JNC/JNB/JAE | 若无进位则跳转；若不低于则跳转；若高于等于则跳转； | jump if not carry;jump if not below;jump if above equal | CF=0             | if (i >= j);             |
+| JBE/JNA     | 若低于等于则跳转；若不高于则跳转                   | jump if below equal;jump if not above                   | ZF=1或CF=1       | if (i <= j);             |
+| JNBE/JA     | 若不低于等于则跳转；若高于则跳转                   | jump if not below equal;jump if above                   | ZF=0或CF=0       | if (i > j);              |
+| JL/JNGE     | 若小于则跳转；若不大于等于则跳转                   | jump if less;jump if not greater equal jump             | SF != OF         | if (si < sj);            |
+| JNL/JGE     | 若不小于则跳转；若大于等于则跳转；                 | jump if not less;jump if greater equal                  | SF = OF          | if (si >= sj);           |
+| JLE/JNG     | 若小于等于则跳转；若不大于则跳转                   | jump if less equal;jump if not greater                  | ZF != OF 或 ZF=1 | if (si <= sj);           |
+| JNLE/JG     | 若不小于等于则跳转；若大于则跳转                   | jump if not less equal;jump if greater                  | SF=0F 且 ZF=0    | if(si>sj)                |
+
+
+
+
+
+
+
+
+
 ## 汇编传参
 
 汇编传参有两种方式，一种是丢寄存器里面，一种是丢堆栈里面。
@@ -438,7 +494,7 @@ mov eax, dword ptr ss:[esp+4]
 
 ## 堆栈平衡
 
-这里暂不深入了解
+知道概览即可，这里暂不深入了解
 
 
 
@@ -448,10 +504,6 @@ mov eax, dword ptr ss:[esp+4]
 
 
 
-## JCC
-
-这里暂不深入了解
-
 
 
 # References
@@ -459,3 +511,4 @@ mov eax, dword ptr ss:[esp+4]
 - https://www.cnblogs.com/zimmerk/articles/2520011.html
 - https://gh0st.cn/Binary-Learning/%E6%B1%87%E7%BC%96%E8%AF%AD%E8%A8%80.html
 - https://www.anquanke.com/post/id/207594
+- https://bbs.pediy.com/thread-262533.htm
