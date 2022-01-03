@@ -43,7 +43,7 @@ PE文件的结构一般来说如下图所示：从起始位置开始依次是DOS
 
 - ###### 相对虚拟地址(Relative Vitual Address,RVA)
 
-  假设一个EXE文件从400000h处载入，它的代码区块开始于401000h处，代码区块的RVA计算方式如如下：
+  RVA就是相对虚拟偏移，就是偏移地址。假设一个EXE文件从400000h处载入，它的代码区块开始于401000h处，代码区块的RVA计算方式如如下：
 
   `目标地址401000h - 载入地址400000h = RVA 1000h`
 
@@ -51,11 +51,13 @@ PE文件的结构一般来说如下图所示：从起始位置开始依次是DOS
 
   `虚拟地址（VA）= 基地址（ImageBase）+相对虚拟地址（RVA）`
 
+搞过外挂的老哥一定对基址+偏移不陌生。
+
 - ###### 文件偏移地址
 
-  当PE文件在磁盘中时，某个数据的位置相对于文件头的偏移量称为文件偏移地址（File Offset）或物理地址（RAW Offset）
+  FOA: 文件偏移，就是文件中所在的地址。当PE文件在磁盘中时，某个数据的位置相对于文件头的偏移量称为文件偏移地址（File Offset）或物理地址（RAW Offset）
 
-搞过外挂的老哥一定对基址+偏移不陌生。
+
 
 
 
@@ -190,7 +192,7 @@ struct _IMAGE_NT_HEADERS {
 
 **基址重定位**
 
- 数据目录表中的IMAGE_DIRECTORY_ENTRY_BASERELOC结构指向重定位目录。由于dll文件并不一定可以装载到默认的基址，所以需要进行重定位。例如在dll文件中有一条确定地址的指令，这时就需要用到重定位。这里不再细述，等以后用到再详细来看。
+ 数据目录表中的IMAGE_DIRECTORY_ENTRY_BASERELOC结构指向重定位目录。由于dll文件并不一定可以装载到默认的基址，所以需要进行重定位。例如在dll文件中有一条确定地址的指令，这时就需要用到重定位，通常是加载多个**相同基地址的dll**会用到。这里不再细述，等以后用到再详细来看。
 
 
 
@@ -213,3 +215,4 @@ struct _IMAGE_NT_HEADERS {
 - https://bbs.pediy.com/thread-262784.htm
 - https://blog.csdn.net/wuyangbotianshi/article/details/17380835
 - https://blog.csdn.net/wuyangbotianshi/article/details/17381113
+- https://www.anquanke.com/post/id/262543

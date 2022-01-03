@@ -486,9 +486,17 @@ RET
 mov eax, dword ptr ss:[esp+4]
 ```
 
-`esp-4`就是有值推到堆栈里面，也就是往上抬。`esp+4`与之相反就是往下找具体地址。
+`esp-4`就是有值推到堆栈里面，也就是往上抬。`esp+4`与之相反就是往下找具体地址，也就是esp寻址。
 
 一个int占四个字节,所以就是esp的值减少了四。
+
+如下在执行push 0x5，push 0xc和push0x9的操作的时候，esp就会相应的减少12，对应的十六进制就是10，所以ESP就从0019FEE4 – 10 = 0019FED8，也就是说如果要往栈里面存入数据，esp的值就是栈顶的地址值
+
+
+
+![img](https://gitee.com/safe6/img/raw/master/t01b84262f82f0bdddf.jpg)
+
+
 
 
 
@@ -512,3 +520,4 @@ mov eax, dword ptr ss:[esp+4]
 - https://gh0st.cn/Binary-Learning/%E6%B1%87%E7%BC%96%E8%AF%AD%E8%A8%80.html
 - https://www.anquanke.com/post/id/207594
 - https://bbs.pediy.com/thread-262533.htm
+- https://www.anquanke.com/post/id/260799#h2-4
